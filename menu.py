@@ -1,111 +1,55 @@
+#!/usr/bin/env python3
+"""
+RPi AI OS — TUI на urwid с каскадными окнами.
+
+Установка:  pip install urwid
+Запуск:     python menu.py
+
+Управление:
+    ↑ / ↓   — перемещение
+    Enter   — выбрать
+    Esc     — назад
+    Ctrl+C  — выход
+"""
+from __future__ import annotations
+
 import subprocess
-import sys
-from pythonclimenu import menu
 
-def wifi_action():
-    result = subprocess.run(["nmcli", "-f", "SSID,SIGNAL", "dev", "wifi", "list"],capture_output=True,text=True)
-    
-    print("=== Wi-Fi сети ===")
-    print(result.stdout)
-    
-    input("Press Enter to exit")
+import urwid
 
-def bt_list_action():
-    result = subprocess.run(["bluetoothctl", "devices"],capture_output=True,text=True)
-    
-    print("=== Bluetooth устройства ===")
-    print(result.stdout)
-    
-    input("Press Enter to exit")
+import ui_app
+from ui_app import CascadingBoxes
+from ui_palette import PALETTE
+from ui_widgets import make_menu
 
-def bt_on_action():
-    result = subprocess.run(["systemctl start blutooth", "devices"],capture_output=True,text=True)
-    
-    print("=== Bluetooth Start UP ===")
-    print(result.stdout)
-    
-    input("Press Enter to exit")
 
-def reboot_action():
-    subprocess.run(["sudo", "reboot"])
+def _bootstrap_app() -> CascadingBoxes:
+    """Собирает app после импорта всех модулей."""
+    from menus_main import build_main_menu
+    root_menu = make_menu("RPi AI OS", build_main_menu())
+    return CascadingBoxes(root_menu)
 
-def poweroff_action():
-    subprocess.run(["sudo", "poweroff"])
 
-def music_action():
-    subprocess.run(["cmus"])
+def main() -> None:
+    ui_app.app = _bootstrap_app()
 
-def back_main_menu():
-    choice == ""
-def exit_action():
-    sys.exit(0)
-    
-    
-def settings_menu():
-    while True:
-        choice = menu(
-            title=["SETTINGS"],
-            options=["Wi-Fi", "VPN", "Bluetooth", "Reboot", "Poweroff", "Back"],
-            cursor_color="red",
-            options_color="white"
-        )
-        if choice == "Wi-Fi":
-            wifi_action()
-        elif choice == "VPN":
-            vpn_action()    
-        elif choice == "Bluetooth":
-            bluetooth_menu()
-        elif choice == "Reboot":
-            reboot_action()
-        elif choice == "Poweroff":
-            poweroff_action()
-        elif choice == "Back":
-            break
-            
-def bluetooth_menu():
-    while True:
-        choice = menu(
-            title=["BT SETTINGS"],
-            options=["BT List", "BT Connections", "BT OFF", "BT ON", "Back"],
-            cursor_color="blue",
-            options_color="white"            
-        )
-        if choice == "BT List":
-            bt_list_action()
-        elif choice == "BT Connections":
-            bt_connections_action()
-        elif choice == "BT OFF":
-            bt_off_action()    
-        elif choice == "BT ON":
-            bt_on_action()
-        elif choice == "Back":
-            break    
-def main_menu():
-    OPTIONS = [
-        "(◕‿◕) AI Agent",
-        "♫ Music",
-        "⛭ Settings",        
-        "Exit"
-    ]
-    while True:
-        choice = menu(
-            title=[""],
-            options=OPTIONS,
-            cursor_color="red",
-            title_color="magenta",
-            options_color="white",
-            initial_cursor_position=0
-        )
-        if choice == "(◕‿◕) AI Agent":
-            print("AI...")
-            input("Enter...")
-        elif choice == "♫ Music":
-            music_action()
-        elif choice == "⛭ Settings":
-            settings_menu()            
-        elif choice == "Exit":
-            exit_action()
+    while not ui_app.app._exit_requested:
+        try:
+            urwid.MainLoop(ui_app.app, palette=PALETTE).run()
+        except KeyboardInterrupt:
+            return
+
+        cmd = ui_app.app._pending_subprocess
+        ui_app.app._pending_subprocess = None
+        if cmd:
+            try:
+                subprocess.run(cmd, start_new_session=True)
+            except FileNotFoundError:
+                from ui_dialogs import show_message
+                show_message("Ошибка", f"{cmd[0]} не установлен.")
+            except KeyboardInterrupt:
+                pass
 
 
 if __name__ == "__main__":
-    main_menu()
+    main()
